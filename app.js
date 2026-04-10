@@ -21,6 +21,7 @@ const App = (() => {
   const toast = document.getElementById('toast');
   const toastText = document.getElementById('toast-text');
   const vibePills = document.querySelectorAll('.vibe-pill');
+  const stagePills = document.querySelectorAll('.stage-pill');
   const exampleChips = document.querySelectorAll('.example-chip');
 
   // Image upload elements
@@ -32,6 +33,7 @@ const App = (() => {
   const ocrStatusText = document.getElementById('ocr-status-text');
 
   let currentVibe = 'smooth';
+  let currentStage = 'cold';
   let isGenerating = false;
   let history = JSON.parse(localStorage.getItem('rizz_history') || '[]');
   let lastIncomingMsg = '';
@@ -68,6 +70,15 @@ const App = (() => {
         vibePills.forEach(p => p.classList.remove('active'));
         pill.classList.add('active');
         currentVibe = pill.dataset.vibe;
+      });
+    });
+
+    // Stage pills
+    stagePills.forEach(pill => {
+      pill.addEventListener('click', () => {
+        stagePills.forEach(p => p.classList.remove('active'));
+        pill.classList.add('active');
+        currentStage = pill.dataset.stage;
       });
     });
 
@@ -242,8 +253,8 @@ const App = (() => {
     const hasImages = imageQueue.length > 0;
     if (isGenerating) return;
 
-    // STARTERS MODE: no text + no images = generate conversation openers
-    if (!msg && !hasImages) {
+    // STARTERS MODE: no text + no images, OR stage is cold = generate openers
+    if ((!msg && !hasImages) || currentStage === 'cold') {
       return generateStartersFlow();
     }
 
@@ -274,7 +285,7 @@ const App = (() => {
     const delay = 700 + Math.random() * 1100;
     setTimeout(() => {
       typingEl.remove();
-      const replies = RizzEngine.generateReplies(textForEngine, currentVibe);
+      const replies = RizzEngine.generateReplies(textForEngine, currentVibe, currentStage);
       addResponseGroup(replies, currentVibe);
       saveToHistory(msg || extractedText, replies, currentVibe, sentImages.length > 0);
       isGenerating = false;
@@ -377,6 +388,13 @@ const App = (() => {
       mysterious: '\uD83C\uDF19 Mysterious',
     };
 
+    const stageLabels = {
+      cold: '\u{1F9CA} Cold Open',
+      talking: '\u{1F4AC} Just Talking',
+      heating: '\u{1F525} Heating Up',
+      closing: '\u{1F608} Closing In',
+    };
+
     const existingGroups = messagesContainer.querySelectorAll('.response-group').length;
     const roundNum = existingGroups + 1;
 
@@ -397,6 +415,7 @@ const App = (() => {
 
     el.innerHTML = `
       <div class="response-group-header">
+        <span class="stage-badge">${stageLabels[currentStage]}</span>
         <span class="vibe-badge">${vibeLabels[vibe]}</span>
         ${roundNum > 1 ? `<span class="round-badge">Round ${roundNum}</span>` : ''}
       </div>
@@ -448,7 +467,7 @@ const App = (() => {
       // Use starters or replies based on mode
       const replies = lastIncomingMsg === '__starters__'
         ? RizzEngine.generateStarters(currentVibe)
-        : RizzEngine.generateReplies(lastIncomingMsg, currentVibe);
+        : RizzEngine.generateReplies(lastIncomingMsg, currentVibe, currentStage);
       addResponseGroup(replies, currentVibe);
       isGenerating = false;
       chatArea.scrollTop = chatArea.scrollHeight;
