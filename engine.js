@@ -208,7 +208,7 @@ const RizzEngine = (() => {
         );
       } else if (s.isPlayful) {
         pool.push(
-          `Your humor is ${pick(["dangerously attractive", "one of my favorite things about you", "the reason I keep texting back"])} ${v()} ${pick(["Don't let it go to your head", "But also keep going", "I'm actually getting attached"]}`,
+          `Your humor is ${pick(["dangerously attractive", "one of my favorite things about you", "the reason I keep texting back"])} ${v()} ${pick(["Don't let it go to your head", "But also keep going", "I'm actually getting attached"])}`,
           `See this is why you're ${pick(["dangerous", "trouble", "my favorite person to text"])} ${v()} ${pick(["You get me", "We have the same brain", "I blame you for my good mood"])}`,
         );
       } else if (s.isPositive) {
