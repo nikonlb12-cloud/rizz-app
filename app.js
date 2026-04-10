@@ -703,22 +703,8 @@ const App = (() => {
       // Show images in chat immediately
       addIncomingMessage(msg, sentImages, null);
 
-      // Run OCR
+      // Run OCR silently — text feeds into the engine but isn't shown
       extractedText = await extractTextFromImages(sentImages);
-
-      // Update the message bubble with extracted text
-      if (extractedText) {
-        const lastBubble = messagesContainer.querySelector('.message-incoming:last-of-type .message-bubble');
-        if (lastBubble) {
-          const extractedEl = document.createElement('div');
-          extractedEl.className = 'message-extracted';
-          extractedEl.innerHTML = `
-            <div class="message-extracted-label">🔍 Extracted from screenshots</div>
-            <div>${escapeHtml(extractedText).replace(/\n/g, '<br>')}</div>
-          `;
-          lastBubble.appendChild(extractedEl);
-        }
-      }
     } else {
       addIncomingMessage(msg, [], null);
     }
