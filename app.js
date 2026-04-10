@@ -796,6 +796,10 @@ const App = (() => {
       mysterious: '🌙 Mysterious',
     };
 
+    // Track round number
+    const existingGroups = messagesContainer.querySelectorAll('.response-group').length;
+    const roundNum = existingGroups + 1;
+
     const el = document.createElement('div');
     el.className = 'message response-group';
 
@@ -814,13 +818,18 @@ const App = (() => {
     el.innerHTML = `
       <div class="response-group-header">
         <span class="vibe-badge">${vibeLabels[vibe]}</span>
+        ${roundNum > 1 ? `<span class="round-badge">Round ${roundNum}</span>` : ''}
       </div>
       <div class="response-options">${cardsHTML}</div>
     `;
 
+    // Remove existing regen button before adding new content
+    const existingRegen = messagesContainer.querySelector('.btn-regenerate');
+    if (existingRegen) existingRegen.remove();
+
     messagesContainer.appendChild(el);
 
-    // Add regenerate button
+    // Add persistent regenerate button
     const regenBtn = document.createElement('button');
     regenBtn.className = 'btn-regenerate';
     regenBtn.innerHTML = `
@@ -829,9 +838,9 @@ const App = (() => {
         <polyline points="1 20 1 14 7 14"/>
         <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
       </svg>
-      Regenerate
+      More options
     `;
-    regenBtn.addEventListener('click', () => handleRegenerate(el, regenBtn));
+    regenBtn.addEventListener('click', handleRegenerate);
     messagesContainer.appendChild(regenBtn);
 
     // Stagger animation
@@ -847,13 +856,13 @@ const App = (() => {
     });
   }
 
-  function handleRegenerate(groupEl, regenBtn) {
+  function handleRegenerate() {
     if (isGenerating || !lastIncomingMsg) return;
     isGenerating = true;
 
-    // Remove old responses & regen button
-    groupEl.remove();
-    regenBtn.remove();
+    // Remove the regen button while generating
+    const existingRegen = messagesContainer.querySelector('.btn-regenerate');
+    if (existingRegen) existingRegen.remove();
 
     // Show typing
     const typingEl = addTypingIndicator();

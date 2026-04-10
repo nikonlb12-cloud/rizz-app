@@ -415,6 +415,18 @@ body {
   border: 1px solid rgba(255, 0, 110, 0.15);
 }
 
+.round-badge {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-tertiary);
+  font-weight: 600;
+  padding: 4px 10px;
+  background: var(--bg-glass);
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-subtle);
+}
+
 .response-options {
   display: flex;
   flex-direction: column;
