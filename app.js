@@ -70,6 +70,8 @@ const App = (() => {
         vibePills.forEach(p => p.classList.remove('active'));
         pill.classList.add('active');
         currentVibe = pill.dataset.vibe;
+        // Auto-regenerate if conversation is active
+        if (lastIncomingMsg && !isGenerating) handleRegenerate();
       });
     });
 
@@ -79,6 +81,8 @@ const App = (() => {
         stagePills.forEach(p => p.classList.remove('active'));
         pill.classList.add('active');
         currentStage = pill.dataset.stage;
+        // Auto-regenerate if conversation is active
+        if (lastIncomingMsg && !isGenerating) handleRegenerate();
       });
     });
 
