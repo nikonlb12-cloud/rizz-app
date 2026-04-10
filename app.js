@@ -456,15 +456,15 @@ const App = (() => {
   const fileInput = document.getElementById('file-input');
   const btnUpload = document.getElementById('btn-upload');
   const imagePreviewStrip = document.getElementById('image-preview-strip');
-  const imagePreviewImg = document.getElementById('image-preview-img');
-  const btnRemoveImage = document.getElementById('btn-remove-image');
   const dropOverlay = document.getElementById('drop-overlay');
+  const ocrStatus = document.getElementById('ocr-status');
+  const ocrStatusText = document.getElementById('ocr-status-text');
 
   let currentVibe = 'smooth';
   let isGenerating = false;
   let history = JSON.parse(localStorage.getItem('rizz_history') || '[]');
   let lastIncomingMsg = '';
-  let currentImageData = null; // base64 data URL of uploaded image
+  let imageQueue = []; // Array of { dataUrl, file } objects
   let dragCounter = 0;
 
   // Create lightbox element
@@ -524,7 +524,6 @@ const App = (() => {
     // Image upload
     btnUpload.addEventListener('click', () => fileInput.click());
     fileInput.addEventListener('change', handleFileSelect);
-    btnRemoveImage.addEventListener('click', removeImage);
 
     // Drag & Drop
     document.addEventListener('dragenter', handleDragEnter);
@@ -544,8 +543,8 @@ const App = (() => {
     messageInput.style.height = 'auto';
     messageInput.style.height = Math.min(messageInput.scrollHeight, 120) + 'px';
 
-    // Toggle send button — active if text OR image present
-    if ((val.trim().length > 0 || currentImageData) && !isGenerating) {
+    // Toggle send button — active if text OR images present
+    if ((val.trim().length > 0 || imageQueue.length > 0) && !isGenerating) {
       btnSend.classList.add('active');
       btnSend.disabled = false;
     } else {
@@ -554,11 +553,11 @@ const App = (() => {
     }
   }
 
-  // ---- Image Handling ----
+  // ---- Batch Image Handling ----
   function handleFileSelect(e) {
-    const file = e.target.files[0];
-    if (file) processImageFile(file);
-    fileInput.value = ''; // reset so same file can be re-selected
+    const files = Array.from(e.target.files);
+    files.forEach(f => addImageToQueue(f));
+    fileInput.value = '';
   }
 
   function handleDragEnter(e) {
@@ -578,10 +577,8 @@ const App = (() => {
     dragCounter = 0;
     dropOverlay.classList.remove('active');
 
-    const files = e.dataTransfer.files;
-    if (files.length > 0 && files[0].type.startsWith('image/')) {
-      processImageFile(files[0]);
-    }
+    const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+    files.forEach(f => addImageToQueue(f));
   }
 
   function handlePaste(e) {
@@ -591,38 +588,62 @@ const App = (() => {
       if (item.type.startsWith('image/')) {
         e.preventDefault();
         const file = item.getAsFile();
-        if (file) processImageFile(file);
+        if (file) addImageToQueue(file);
         return;
       }
     }
   }
 
-  function processImageFile(file) {
-    if (!file.type.startsWith('image/')) {
-      showToast('Only image files are supported');
-      return;
-    }
+  function addImageToQueue(file) {
+    if (!file.type.startsWith('image/')) return;
     if (file.size > 10 * 1024 * 1024) {
       showToast('Image too large (max 10MB)');
+      return;
+    }
+    if (imageQueue.length >= 10) {
+      showToast('Max 10 screenshots at a time');
       return;
     }
 
     const reader = new FileReader();
     reader.onload = (e) => {
-      currentImageData = e.target.result;
-      imagePreviewImg.src = currentImageData;
-      imagePreviewStrip.classList.add('active');
-      handleInput(); // re-check send button state
-      showToast('Screenshot attached 📸');
+      imageQueue.push({ dataUrl: e.target.result, id: Date.now() + Math.random() });
+      renderImagePreviews();
+      handleInput();
+      showToast(`${imageQueue.length} screenshot${imageQueue.length > 1 ? 's' : ''} attached 📸`);
     };
     reader.readAsDataURL(file);
   }
 
-  function removeImage() {
-    currentImageData = null;
-    imagePreviewImg.src = '';
+  function removeImageFromQueue(id) {
+    imageQueue = imageQueue.filter(img => img.id !== id);
+    renderImagePreviews();
+    handleInput();
+  }
+
+  function renderImagePreviews() {
+    if (imageQueue.length === 0) {
+      imagePreviewStrip.classList.remove('active');
+      imagePreviewStrip.innerHTML = '';
+      return;
+    }
+
+    imagePreviewStrip.classList.add('active');
+    imagePreviewStrip.innerHTML = imageQueue.map((img, i) => `
+      <div class="image-preview-card">
+        <img src="${img.dataUrl}" alt="Screenshot ${i + 1}">
+        <span class="preview-count">${i + 1}</span>
+        <button class="btn-remove-image" onclick="App.removeImage(${img.id})" title="Remove">×</button>
+      </div>
+    `).join('');
+  }
+
+  function clearAllImages() {
+    imageQueue = [];
     imagePreviewStrip.classList.remove('active');
-    handleInput(); // re-check send button state
+    imagePreviewStrip.innerHTML = '';
+    ocrStatus.classList.remove('active');
+    handleInput();
   }
 
   function openLightbox(imgSrc) {
@@ -630,80 +651,135 @@ const App = (() => {
     lightbox.classList.add('active');
   }
 
-  function handleSend() {
-    const msg = messageInput.value.trim();
-    const hasImage = !!currentImageData;
-    if ((!msg && !hasImage) || isGenerating) return;
+  // ---- OCR ----
+  async function extractTextFromImages(images) {
+    if (!images || images.length === 0) return '';
 
-    // Use message text for generation, or a generic fallback if only image
-    const textForEngine = msg || 'Hey';
-    lastIncomingMsg = textForEngine;
+    ocrStatus.classList.add('active');
+    ocrStatusText.textContent = `Reading ${images.length} screenshot${images.length > 1 ? 's' : ''}...`;
+
+    let allText = [];
+
+    try {
+      for (let i = 0; i < images.length; i++) {
+        ocrStatusText.textContent = `Reading screenshot ${i + 1} of ${images.length}...`;
+        const result = await Tesseract.recognize(images[i].dataUrl, 'eng', {
+          logger: () => {} // suppress logs
+        });
+        const text = result.data.text.trim();
+        if (text) allText.push(text);
+      }
+    } catch (err) {
+      console.error('OCR error:', err);
+      showToast('Could not read screenshot text');
+    }
+
+    ocrStatus.classList.remove('active');
+    return allText.join('\n---\n');
+  }
+
+  async function handleSend() {
+    const msg = messageInput.value.trim();
+    const hasImages = imageQueue.length > 0;
+    if ((!msg && !hasImages) || isGenerating) return;
+
     isGenerating = true;
 
-    // Capture image before clearing
-    const sentImageData = currentImageData;
+    // Capture images before clearing
+    const sentImages = [...imageQueue];
 
     // Hide welcome, show messages
     welcomeScreen.style.display = 'none';
     messagesContainer.classList.add('active');
 
-    // Add incoming message with optional image
-    addIncomingMessage(msg, sentImageData);
-
-    // Clear input & image
+    // Clear input & images
     messageInput.value = '';
-    removeImage();
+    clearAllImages();
     handleInput();
+
+    // If we have images, run OCR first
+    let extractedText = '';
+    if (sentImages.length > 0) {
+      // Show images in chat immediately
+      addIncomingMessage(msg, sentImages, null);
+
+      // Run OCR
+      extractedText = await extractTextFromImages(sentImages);
+
+      // Update the message bubble with extracted text
+      if (extractedText) {
+        const lastBubble = messagesContainer.querySelector('.message-incoming:last-of-type .message-bubble');
+        if (lastBubble) {
+          const extractedEl = document.createElement('div');
+          extractedEl.className = 'message-extracted';
+          extractedEl.innerHTML = `
+            <div class="message-extracted-label">🔍 Extracted from screenshots</div>
+            <div>${escapeHtml(extractedText).replace(/\n/g, '<br>')}</div>
+          `;
+          lastBubble.appendChild(extractedEl);
+        }
+      }
+    } else {
+      addIncomingMessage(msg, [], null);
+    }
+
+    // Determine text to feed to the engine
+    // Priority: manual text > extracted OCR text > fallback
+    const textForEngine = msg || extractedText || 'Hey';
+    lastIncomingMsg = textForEngine;
 
     // Show typing indicator
     const typingEl = addTypingIndicator();
+    chatArea.scrollTop = chatArea.scrollHeight;
 
-    // Simulate generation delay (700-1800ms)
+    // Simulate generation delay
     const delay = 700 + Math.random() * 1100;
     setTimeout(() => {
-      // Remove typing
       typingEl.remove();
 
-      // Generate & display responses
       const replies = RizzEngine.generateReplies(textForEngine, currentVibe);
       addResponseGroup(replies, currentVibe);
 
-      // Save to history
-      saveToHistory(textForEngine, replies, currentVibe, sentImageData);
+      saveToHistory(msg || extractedText, replies, currentVibe, sentImages.length > 0);
 
       isGenerating = false;
       handleInput();
 
-      // Scroll to bottom
       chatArea.scrollTop = chatArea.scrollHeight;
     }, delay);
-
-    // Scroll to bottom
-    setTimeout(() => {
-      chatArea.scrollTop = chatArea.scrollHeight;
-    }, 50);
   }
 
-  function addIncomingMessage(text, imageData) {
+  function addIncomingMessage(text, images, extractedText) {
     const el = document.createElement('div');
     el.className = 'message message-incoming';
 
-    let imageHTML = '';
-    if (imageData) {
-      imageHTML = `
-        <div class="message-image">
-          <img src="${imageData}" alt="Conversation screenshot" onclick="App.openLightbox(this.src)">
-        </div>
-      `;
+    let imagesHTML = '';
+    if (images && images.length > 0) {
+      if (images.length === 1) {
+        imagesHTML = `
+          <div class="message-image">
+            <img src="${images[0].dataUrl}" alt="Conversation screenshot" onclick="App.openLightbox(this.src)">
+          </div>
+        `;
+      } else {
+        imagesHTML = `<div class="message-images">${images.map((img, i) => `
+          <div class="message-image">
+            <img src="${img.dataUrl}" alt="Screenshot ${i + 1}" onclick="App.openLightbox(this.src)">
+          </div>
+        `).join('')}</div>`;
+      }
     }
 
     const textHTML = text ? `<div class="message-text">${escapeHtml(text)}</div>` : '';
+    const label = images && images.length > 0
+      ? `📸 Their message (${images.length} screenshot${images.length > 1 ? 's' : ''})`
+      : 'Their message';
 
     el.innerHTML = `
       <div class="message-bubble">
-        <div class="message-label">${imageData ? '📸 Their message' : 'Their message'}</div>
+        <div class="message-label">${label}</div>
         ${textHTML}
-        ${imageHTML}
+        ${imagesHTML}
       </div>
     `;
     messagesContainer.appendChild(el);
@@ -812,12 +888,12 @@ const App = (() => {
     welcomeScreen.style.display = '';
     lastIncomingMsg = '';
     isGenerating = false;
-    removeImage();
+    clearAllImages();
     messageInput.focus();
   }
 
   // History
-  function saveToHistory(msg, replies, vibe, imageData) {
+  function saveToHistory(msg, replies, vibe, hasImages) {
     const entry = {
       id: Date.now(),
       message: msg,
@@ -825,8 +901,7 @@ const App = (() => {
       vibe: vibe,
       timestamp: new Date().toISOString(),
     };
-    // Store a tiny thumbnail for history, not the full image (saves localStorage space)
-    if (imageData) entry.hasImage = true;
+    if (hasImages) entry.hasImage = true;
     history.unshift(entry);
     if (history.length > 50) history = history.slice(0, 50);
     localStorage.setItem('rizz_history', JSON.stringify(history));
@@ -930,5 +1005,5 @@ const App = (() => {
   init();
 
   // Public API
-  return { copyReply, loadHistory, openLightbox };
+  return { copyReply, loadHistory, openLightbox, removeImage: removeImageFromQueue };
 })();
