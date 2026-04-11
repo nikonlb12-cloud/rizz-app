@@ -37,6 +37,7 @@ const App = (() => {
   let isGenerating = false;
   let history = JSON.parse(localStorage.getItem('rizz_history') || '[]');
   let lastIncomingMsg = '';
+  let lastBioText = '';
   let imageQueue = [];
   let dragCounter = 0;
 
@@ -282,6 +283,9 @@ const App = (() => {
 
     const textForEngine = msg || extractedText || 'Hey';
     lastIncomingMsg = textForEngine;
+    // Store bio/OCR text so regeneration has context
+    if (extractedText) lastBioText = extractedText;
+    if (msg && !extractedText) lastBioText = msg;
 
     const typingEl = addTypingIndicator();
     chatArea.scrollTop = chatArea.scrollHeight;
@@ -289,7 +293,7 @@ const App = (() => {
     const delay = 700 + Math.random() * 1100;
     setTimeout(() => {
       typingEl.remove();
-      const replies = RizzEngine.generateReplies(textForEngine, currentVibe, currentStage);
+      const replies = RizzEngine.generateReplies(textForEngine, currentVibe, currentStage, lastBioText);
       addResponseGroup(replies, currentVibe);
       saveToHistory(msg || extractedText, replies, currentVibe, sentImages.length > 0);
       isGenerating = false;
@@ -306,10 +310,13 @@ const App = (() => {
 
     const sysEl = document.createElement('div');
     sysEl.className = 'message message-incoming';
+    const hasBio = lastBioText && RizzEngine.parseBio(lastBioText).hasContext;
     sysEl.innerHTML = `
       <div class="message-bubble">
-        <div class="message-label">\u26A1 Conversation Starters</div>
-        <div class="message-text">No screenshot? No problem. Here are openers crafted to start a real conversation and stand out from every other message in her DMs.</div>
+        <div class="message-label">\u26A1 ${hasBio ? 'Personalized Openers' : 'Conversation Starters'}</div>
+        <div class="message-text">${hasBio
+          ? 'I read her profile. Here are openers tailored to her interests that\'ll stand out from every generic DM she gets.'
+          : 'No screenshot? No problem. Here are openers crafted to start a real conversation and stand out from every other message in her DMs.'}</div>
       </div>
     `;
     messagesContainer.appendChild(sysEl);
@@ -320,7 +327,7 @@ const App = (() => {
     const delay = 700 + Math.random() * 1100;
     setTimeout(() => {
       typingEl.remove();
-      const starters = RizzEngine.generateStarters(currentVibe);
+      const starters = RizzEngine.generateStarters(currentVibe, lastBioText);
       lastIncomingMsg = '__starters__';
       addResponseGroup(starters, currentVibe);
       saveToHistory('Conversation Starters', starters, currentVibe, false);
@@ -470,8 +477,8 @@ const App = (() => {
       typingEl.remove();
       // Use starters or replies based on mode
       const replies = lastIncomingMsg === '__starters__'
-        ? RizzEngine.generateStarters(currentVibe)
-        : RizzEngine.generateReplies(lastIncomingMsg, currentVibe, currentStage);
+        ? RizzEngine.generateStarters(currentVibe, lastBioText)
+        : RizzEngine.generateReplies(lastIncomingMsg, currentVibe, currentStage, lastBioText);
       addResponseGroup(replies, currentVibe);
       isGenerating = false;
       chatArea.scrollTop = chatArea.scrollHeight;
