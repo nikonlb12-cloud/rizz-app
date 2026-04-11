@@ -257,8 +257,8 @@ const App = (() => {
     const hasImages = imageQueue.length > 0;
     if (isGenerating) return;
 
-    // STARTERS MODE: no text + no images, OR stage is cold = generate openers
-    if ((!msg && !hasImages) || currentStage === 'cold') {
+    // STARTERS MODE: no text + no images = generate openers
+    if (!msg && !hasImages) {
       return generateStartersFlow();
     }
 
